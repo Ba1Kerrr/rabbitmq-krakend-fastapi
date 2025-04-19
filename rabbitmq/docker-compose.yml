@@ -1,0 +1,28 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.8-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin
+
+  fastapi:
+    build: ../krakend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - rabbitmq
+    environment:
+      - RABBITMQ_URL= amqp://admin:admin@rabbitmq:5672/
+
+  krakend:
+    image: devopsfaith/krakend:2.0.0
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    depends_on:
+      - fastapi
+    volumes:
+      - ./krakend.json:/krakend/krakend.json
