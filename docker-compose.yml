@@ -1,0 +1,18 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.12.10-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin
+
+  service:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - RABBITMQ_URL= amqp://admin:admin@rabbitmq:5672/
