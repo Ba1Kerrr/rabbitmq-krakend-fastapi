@@ -7,6 +7,11 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=admin
       - RABBITMQ_DEFAULT_PASS=admin
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   service:
     build: 
@@ -15,4 +20,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - RABBITMQ_URL= amqp://admin:admin@rabbitmq:5672/
+      - RABBITMQ_URL=amqp://admin:admin@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy

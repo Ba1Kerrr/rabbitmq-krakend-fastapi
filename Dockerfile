@@ -9,7 +9,7 @@ COPY requirements.txt .
 #set virtul environetal
 RUN python -m venv /app/settings
 
-ENV PATH="/app/env/bin:$PATH"
+ENV PATH="/app/settings/env/bin:$PATH"
 
 # Install dependencies
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
@@ -23,4 +23,4 @@ EXPOSE 8000
 
 # Run command to start the application
 
-CMD ["uvicorn", "main:app", "--host", "127.0.0.1" , "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0" , "--port", "8000"]

@@ -1,67 +1,72 @@
-# from fastapi import FastAPI, Request, responses
-# from fastapi.middleware.cors import CORSMiddleware
-# from fastapi.exceptions import RequestValidationError
+import asyncio
+import json
+import os
+from fastapi import Depends, FastAPI,Request
+from faststream.rabbit.fastapi import RabbitRouter, Logger
 
-# from faststream.rabbit.fastapi import RabbitRouter
-# from faststream import FastStream
+from pika import ConnectionParameters, BlockingConnection,BasicProperties,PlainCredentials
 
-# from rabbitmq.rabbitmq import produser, consumer
+from pydantic import BaseModel
 
-# faststream = FastStream(broker)
+# Получаем URL RabbitMQ из переменной окружения
+rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://admin:admin@rabbitmq:5672/")
+router = RabbitRouter(rabbitmq_url)
 
-# app = FastAPI()
+connection = BlockingConnection(ConnectionParameters(rabbitmq_url))
+channel = connection.channel()
 
-# app.add_middleware(CORSMiddleware, 
-#                    allow_origins=["*"], 
-#                    allow_methods=["*"],
-#                    allow_headers=["*"], 
-#                    expose_headers=["*"], 
-#                    )
+# Определяем модель для входящих сообщений
+class Incoming(BaseModel):
+    m: dict
 
-# router = RabbitRouter("amqp://admin:admin@rabbitmq:5672/")
+# def call():
+#     return True
 
-# @app.post("/send_message")
-# async def send_message_endpoint(message: str):
-#     await produser(message)
-#     return responses.JSONResponse(content={"message": "Message sent"}, status_code=200)
+# Обработчик для входящих сообщений из очереди "test"
+@router.subscriber("test")
+@router.publisher("response")
+async def hello(m: Incoming, logger: Logger):
+    logger.info(m)
+    return {"response": "Hello, Rabbit!"}
 
+# HTTP-эндпоинт
+@router.get("/")
+async def hello_http():
+    return "Hello, HTTP!"
 
-# @faststream.route("/stream")
-# async def stream():
-#     while True:
-#         message = await consumer()
-#         if message:
-#             yield message
-#         else:
-#             yield None
-
-
-# app.include_router(router)
-
-
-from fastapi import FastAPI, Request, responses
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.exceptions import RequestValidationError
-
-from faststream.rabbit.fastapi import RabbitRouter
-from faststream import FastStream
-
-from rabbitmq.rabbitmq import produser, consumer
-
-faststream = FastStream("amqp://admin:admin@rabbitmq:5672/")
-
+# Создаем экземпляр FastAPI и подключаем маршрутизатор
 app = FastAPI()
 
-router = RabbitRouter("amqp://admin:admin@rabbitmq:5672/")
-
-@app.get("/stream")
-async def stream():
-    async def event_generator():
-        async for message in router.stream("my_queue"):
-            yield {"message": message}
-    return responses.StreamingResponse(event_generator(), media_type="text/event-stream")
-
 @app.post("/send_message")
-async def send_message_endpoint(message: str):
-    await router.send("my_queue", message)
-    return {"message": "Message sent successfully"}
+async def send_message(message: str):
+    data = Request.json
+    try:
+        channel.basic_publish(
+            exchange="",
+            routing_key="tasks",
+            body=json.dumps(data),
+            properties=BasicProperties(delivery_mode=2)
+        )
+        return {"message": "Message sent successfully"}
+    except Exception as e:
+        return {"error": "Failed to send message", "details": str(e)}
+
+app.include_router(router)
+
+@router.after_startup
+async def startup_event(app: FastAPI):
+    def callback(ch, method, properties, body):
+        data = json.loads(body)
+        print(f"Received task: {data}")
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+
+    connection = BlockingConnection(ConnectionParameters(rabbitmq_url))
+
+    channel = connection.channel()
+    channel.queue_declare(queue="tasks", durable=True)
+    channel.basic_qos(prefetch_count=1)
+    channel.basic_consume(queue="tasks", on_message_callback=callback)
+    print("Waiting for messages...")
+    channel.start_consuming()
+
+
